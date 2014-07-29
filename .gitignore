@@ -1,0 +1,5 @@
+sphere-serial
+sphere-config
+.gopath/*
+pkg/
+.AppleDouble

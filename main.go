@@ -1,6 +1,13 @@
 package main
 
-import "os"
+import (
+	"os"
+	"github.com/ninjasphere/go-ninja"
+
+)
+
+var drivername = "driver-lifx"
+var log = ninja.GetLogger(drivername)
 
 func main() {
 
@@ -8,8 +15,6 @@ func main() {
 }
 
 func realMain() int {
-	//log.SetOutput(ioutil.Discard)
-
 	// Get the command line args. We shortcut "--version" and "-v" to
 	// just show the version.
 	args := os.Args[1:]
@@ -22,8 +27,6 @@ func realMain() int {
 			break
 		}
 	}
-
 	exitcode := run()
-
 	return exitcode
 }
