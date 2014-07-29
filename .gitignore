@@ -3,3 +3,4 @@ sphere-config
 .gopath/*
 pkg/
 .AppleDouble
+.DS_Store
