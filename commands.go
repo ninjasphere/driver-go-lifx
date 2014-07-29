@@ -128,7 +128,7 @@ func NewLight(bus *ninja.DriverBus, client *client.Light) (*Light, error) { //TO
 
 	light := &Light{ //TODO fix when lib gets updated
 		Id:         lightID,
-		Name:       "lifx bulb",
+		Name:       "LiFX Bulb",
 		LightState: &lightState,
 		Batch:      false,
 		lightClient:			client,
@@ -142,7 +142,7 @@ func NewLight(bus *ninja.DriverBus, client *client.Light) (*Light, error) { //TO
       "ninja:thingType": "light"
   }`))
 
-	deviceBus, _ := bus.AnnounceDevice(lightID, "lifx", "lifx", sigs) //TODO fix when lib gets updated
+	deviceBus, _ := bus.AnnounceDevice(lightID, "light", "LiFX Bulb", sigs) //TODO fix when lib gets updated
 	light.Bus = deviceBus
 	light.OnOffBus = getOnOffBus(light)
 	light.brightnessBus = getBrightBus(light)
@@ -163,7 +163,11 @@ func (l Light) EndBatch() {
 }
 
 func (l Light) turnOnOff(state bool) {
-
+	if(state == true) {
+		l.lightClient.TurnOn()
+	} else {
+		l.lightClient.TurnOff()
+	}
 
 }
 
@@ -248,13 +252,6 @@ func (l Light) setBatchColor(payload *simplejson.Json) {
 	l.EndBatch()
 }
 
-// type LightState struct {
-//   On             *bool
-//   Brightness     *uint16
-//   Hue            *uint16
-//   Saturation     *uint16
-//   TransitionTime *uint16 //?
-// }
 
 func createLightState() LightState {
 
