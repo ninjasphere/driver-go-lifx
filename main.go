@@ -27,6 +27,6 @@ func realMain() int {
 			break
 		}
 	}
-	exitcode := run()
-	return exitcode
+
+	return run()
 }
