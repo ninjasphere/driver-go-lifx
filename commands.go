@@ -32,7 +32,7 @@ type LightState struct {
 	Brightness     *uint16
 	Hue            *uint16
 	Saturation     *uint16
-	TransitionTime *uint16 //?
+	TransitionTime *uint16 
 	XY             []float64
 	ColorTemp      *uint16
 }
@@ -171,7 +171,7 @@ func (l Light) turnOnOff(state bool) {
 
 }
 
-func (l Light) setBrightness(fbrightness float64) {
+func (l Light) setBrightness(fbrightness float64) {//TODO
 
 }
 
