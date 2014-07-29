@@ -32,12 +32,12 @@ type LightState struct {
 	Brightness     *uint16
 	Hue            *uint16
 	Saturation     *uint16
-	TransitionTime *uint16 
+	TransitionTime *uint16
 	XY             []float64
 	ColorTemp      *uint16
 }
 
-func (l Light) GetJsonLightState() *simplejson.Json {
+func (l *Light) GetJsonLightState() *simplejson.Json {
 	st := l.LightState
 	js := simplejson.New()
 	js.Set("on", st.On)
@@ -47,6 +47,7 @@ func (l Light) GetJsonLightState() *simplejson.Json {
 	js.Set("ct", st.ColorTemp)
 	js.Set("transitionTime", st.TransitionTime)
 	js.Set("xy", st.XY)
+
 	return js
 }
 
@@ -80,6 +81,7 @@ func getBrightBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"set"}
 	events := []string{"state"}
 	brightnessBus, _ := light.Bus.AnnounceChannel("brightness", "brightness", methods, events, func(method string, payload *simplejson.Json) {
+
 		if light.Batch == true {
 			return
 		}
@@ -88,6 +90,7 @@ func getBrightBus(light *Light) *ninja.ChannelBus {
 		case "set":
 			brightness, _ := payload.GetIndex(0).Float64()
 			light.setBrightness(brightness)
+
 		default:
 			log.Criticalf("Brightness got an unknown method %s", method)
 			return
@@ -122,7 +125,6 @@ func getColorBus(light *Light) *ninja.ChannelBus {
 }
 
 func NewLight(bus *ninja.DriverBus, client *client.Light) (*Light, error) { //TODO cut this down!
-
 	lightID := "1"
 	lightState := createLightState()
 
@@ -152,17 +154,17 @@ func NewLight(bus *ninja.DriverBus, client *client.Light) (*Light, error) { //TO
 	return light, nil
 }
 
-func (l Light) StartBatch() {
+func (l *Light) StartBatch() {
 	l.Batch = true
 }
 
-func (l Light) EndBatch() {
+func (l *Light) EndBatch() {
 	l.Batch = false
 	// l.User.SetLightState(l.Id, l.LightState) //TODO send actual state
 	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
 }
 
-func (l Light) turnOnOff(state bool) {
+func (l *Light) turnOnOff(state bool) {
 	if(state == true) {
 		l.lightClient.TurnOn()
 	} else {
@@ -171,11 +173,11 @@ func (l Light) turnOnOff(state bool) {
 
 }
 
-func (l Light) setBrightness(fbrightness float64) {//TODO
+func (l *Light) setBrightness(fbrightness float64) {//TODO
 
 }
 
-func (l Light) setColor(payload *simplejson.Json, mode string) {
+func (l *Light) setColor(payload *simplejson.Json, mode string) {
 	l.refreshLightState()
 	switch mode {
 	case "hue": //TODO less verbose plz
@@ -223,13 +225,13 @@ func (l Light) setColor(payload *simplejson.Json, mode string) {
 
 }
 
-func (l Light) setTransition(transTime int) {
+func (l *Light) setTransition(transTime int) {
 	transTime = transTime / 1000 //LIFX transition time in seconds
 	utranstime := uint16(transTime)
 	l.LightState.TransitionTime = &utranstime
 }
 
-func (l Light) setBatchColor(payload *simplejson.Json) {
+func (l *Light) setBatchColor(payload *simplejson.Json) {
 	l.StartBatch()
 
 	color := payload.Get("color")
@@ -277,13 +279,13 @@ func getCurDir() string {
 	return pwd + "/"
 }
 
-func (l Light) sendLightState() {
+func (l *Light) sendLightState() {
 
 	// l.User.SetLightState(l.Id, l.LightState)
 	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
 }
 
-func (l Light) refreshLightState() { //TODO
+func (l *Light) refreshLightState() { //TODO
 
 }
 
