@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/bjeanes/go-lifx/client"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/ninjasphere/go-lifx/client"
 	"github.com/ninjasphere/go-ninja"
+	"github.com/ninjasphere/go-ninja/logger"
 )
 
 type Light struct {
@@ -38,7 +40,7 @@ type LightState struct {
 }
 
 var drivername = "driver-lifx"
-var log = ninja.GetLogger(drivername)
+var log = logger.GetLogger(drivername)
 
 func (l *Light) GetJsonLightState() *simplejson.Json {
 	st := l.LightState
@@ -54,11 +56,12 @@ func (l *Light) GetJsonLightState() *simplejson.Json {
 	return js
 }
 
-
 func getOnOffBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"turnOn", "turnOff", "set"}
 	events := []string{"state"}
 	onOffBus, _ := light.Bus.AnnounceChannel("on-off", "on-off", methods, events, func(method string, payload *simplejson.Json) {
+		log.Infof("got actuation, method is %s", method)
+		spew.Dump(payload)
 		if light.Batch == true {
 			return
 		}
@@ -128,15 +131,14 @@ func getColorBus(light *Light) *ninja.ChannelBus {
 }
 
 func NewLight(bus *ninja.DriverBus, client *client.Light) (*Light, error) { //TODO cut this down!
-	lightID := "1"
 	lightState := createLightState()
-
+	lightID := "1"
 	light := &Light{ //TODO fix when lib gets updated
-		Id:         lightID,
-		Name:       "LiFX Bulb",
-		LightState: &lightState,
-		Batch:      false,
-		lightClient:			client,
+		Id:          lightID,
+		Name:        "LiFX Bulb",
+		LightState:  &lightState,
+		Batch:       false,
+		lightClient: client,
 	}
 
 	sigs, _ := simplejson.NewJson([]byte(`{
@@ -168,7 +170,7 @@ func (l *Light) EndBatch() {
 }
 
 func (l *Light) turnOnOff(state bool) {
-	if(state == true) {
+	if state == true {
 		l.lightClient.TurnOn()
 	} else {
 		l.lightClient.TurnOff()
@@ -257,7 +259,6 @@ func (l *Light) setBatchColor(payload *simplejson.Json) {
 	l.EndBatch()
 }
 
-
 func createLightState() LightState {
 
 	on := bool(false)
@@ -284,7 +285,7 @@ func getCurDir() string {
 
 func (l *Light) sendLightState() {
 
-	// l.User.SetLightState(l.Id, l.LightState)
+	// l.User.SetLightState(l.Id, l.LightState) #TODO
 	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
 }
 
@@ -296,7 +297,7 @@ func blinkAllLights() {
 	c := client.New()
 	c.Discover()
 
-	for i:=0; i<3; i++ {
+	for i := 0; i < 3; i++ {
 		for _, l := range c.Lights {
 			l.TurnOff()
 		}
@@ -328,21 +329,12 @@ func run() int {
 	log.Infof("Starting " + drivername)
 
 	conn, err := ninja.Connect("com.ninjablocks.lifx")
-	bus, err := conn.AnnounceDriver("com.ninjablocks.hue", drivername, getCurDir())
+	_, err = conn.AnnounceDriver("com.ninjablocks.hue", drivername, getCurDir())
 	if err != nil {
 		log.HandleError(err, "Could not get driver bus")
 	}
 
-	lightClient := client.New()
-	lightClient.Discover()
-
-	for _,l := range lightClient.Lights {
-		_, err := NewLight(bus,&l)
-		if err != nil {
-			log.Criticalf("Error creating light instance %s",err)
-		}
-
-	}
+	blinkAllLights()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)

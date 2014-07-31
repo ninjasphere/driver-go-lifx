@@ -2,8 +2,6 @@ package main
 
 import (
 	"os"
-	"github.com/ninjasphere/go-ninja"
-
 )
 
 func main() {
