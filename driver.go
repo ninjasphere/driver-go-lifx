@@ -329,12 +329,19 @@ func run() int {
 	log.Infof("Starting " + drivername)
 
 	conn, err := ninja.Connect("com.ninjablocks.lifx")
-	_, err = conn.AnnounceDriver("com.ninjablocks.hue", drivername, getCurDir())
+	bus, err := conn.AnnounceDriver("com.ninjablocks.lifx", drivername, getCurDir())
 	if err != nil {
 		log.HandleError(err, "Could not get driver bus")
 	}
 
-	blinkAllLights()
+	lightClient := client.New()
+	lightClient.Discover()
+	for _, l := range lightClient.Lights {
+		_, err := NewLight(bus, &l)
+		if err != nil {
+			log.Criticalf("Error creating light instance %s", err)
+		}
+	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
