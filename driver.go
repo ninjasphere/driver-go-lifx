@@ -15,6 +15,12 @@ import (
 	"github.com/ninjasphere/go-ninja/logger"
 )
 
+var drivername = "driver-lifx"
+var log = logger.GetLogger(drivername)
+
+
+
+
 type Light struct {
 	Id            string
 	Name          string
@@ -39,8 +45,6 @@ type LightState struct {
 	ColorTemp      *uint16
 }
 
-var drivername = "driver-lifx"
-var log = logger.GetLogger(drivername)
 
 func (l *Light) GetJsonLightState() *simplejson.Json {
 	st := l.LightState
@@ -59,7 +63,7 @@ func (l *Light) GetJsonLightState() *simplejson.Json {
 func getOnOffBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"turnOn", "turnOff", "set"}
 	events := []string{"state"}
-	onOffBus, _ := light.Bus.AnnounceChannel("on-off", "on-off", methods, events, func(method string, payload *simplejson.Json) {
+	onOffBus, err := light.Bus.AnnounceChannel("on-off", "on-off", methods, events, func(method string, payload *simplejson.Json) {
 		log.Infof("got actuation, method is %s", method)
 		spew.Dump(payload)
 		if light.Batch == true {
@@ -80,13 +84,17 @@ func getOnOffBus(light *Light) *ninja.ChannelBus {
 		}
 	})
 
+	if err != nil {
+		log.HandleError(err, "Could not announce on/off channel")
+	}
+
 	return onOffBus
 }
 
 func getBrightBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"set"}
 	events := []string{"state"}
-	brightnessBus, _ := light.Bus.AnnounceChannel("brightness", "brightness", methods, events, func(method string, payload *simplejson.Json) {
+	brightnessBus, err := light.Bus.AnnounceChannel("brightness", "brightness", methods, events, func(method string, payload *simplejson.Json) {
 
 		if light.Batch == true {
 			return
@@ -104,6 +112,10 @@ func getBrightBus(light *Light) *ninja.ChannelBus {
 
 	})
 
+	if err != nil {
+		log.HandleError(err, "Could not announce brightness channel")
+	}
+
 	return brightnessBus
 
 }
@@ -111,7 +123,7 @@ func getBrightBus(light *Light) *ninja.ChannelBus {
 func getColorBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"set"}
 	events := []string{"state"}
-	colorBus, _ := light.Bus.AnnounceChannel("color", "color", methods, events, func(method string, payload *simplejson.Json) {
+	colorBus, err := light.Bus.AnnounceChannel("color", "color", methods, events, func(method string, payload *simplejson.Json) {
 		if light.Batch == true {
 			return
 		}
@@ -126,6 +138,10 @@ func getColorBus(light *Light) *ninja.ChannelBus {
 			log.Criticalf("Color got an unknown method %s", method)
 		}
 	})
+
+	if err != nil {
+		log.HandleError(err, "Could not announce color channel")
+	}
 
 	return colorBus
 }
@@ -312,7 +328,7 @@ func blinkAllLights() {
 func getBatchBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"setBatch"}
 	events := []string{"state"}
-	batchBus, _ := light.Bus.AnnounceChannel("core.batching", "core.batching", methods, events, func(method string, payload *simplejson.Json) {
+	batchBus, err := light.Bus.AnnounceChannel("core.batching", "core.batching", methods, events, func(method string, payload *simplejson.Json) {
 		switch method {
 		case "setBatch":
 			light.setBatchColor(payload.GetIndex(0))
@@ -322,6 +338,10 @@ func getBatchBus(light *Light) *ninja.ChannelBus {
 		}
 	})
 
+	if err != nil {
+		log.HandleError(err, "Could not announce brightness channel")
+	}
+
 	return batchBus
 }
 
@@ -329,9 +349,12 @@ func run() int {
 	log.Infof("Starting " + drivername)
 
 	conn, err := ninja.Connect("com.ninjablocks.lifx")
+	if err != nil {
+		log.FatalErrorf(err, "Could not connect to MQTT Broker")
+	}
 	bus, err := conn.AnnounceDriver("com.ninjablocks.lifx", drivername, getCurDir())
 	if err != nil {
-		log.HandleError(err, "Could not get driver bus")
+		log.FatalErrorf(err, "Could not get driver bus")
 	}
 
 	lightClient := client.New()
@@ -342,6 +365,9 @@ func run() int {
 			log.Criticalf("Error creating light instance %s", err)
 		}
 	}
+
+
+	blinkAllLights()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
