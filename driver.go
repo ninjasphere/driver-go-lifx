@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"os"
@@ -149,8 +150,7 @@ func getBatchBus(light *Light) *ninja.ChannelBus {
 
 func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Light, error) { //TODO cut this down!
 	id := string(bulb.LifxAddress[:6]) //Address is 6 bytes long
-	label := bulb.GetLabel()
-	log.Infof("Making light with ID: %s Label:", id, label)
+	log.Infof("Making light with ID: %s Label:", id, bulb.Label)
 	light := &Light{
 		Batch:  false,
 		Client: client,
@@ -165,7 +165,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Ligh
       "ninja:thingType": "light"
   }`))
 
-	deviceBus, _ := bus.AnnounceDevice(id, "light", label, sigs) //TODO fix when lib gets updated
+	deviceBus, _ := bus.AnnounceDevice(id, "light", bulb.Label, sigs) //TODO fix when lib gets updated
 	light.Bus = deviceBus
 	light.OnOffBus = getOnOffBus(light)
 	light.brightnessBus = getBrightBus(light)
@@ -201,46 +201,48 @@ func (l *Light) setBrightness(fbrightness float64) {
 
 }
 
-func (l *Light) setColor(payload *simplejson.Json, mode string) {
-
-	spew.Dump(payload)
-	spew.Dump(mode)
-}
+// func (l *Light) setColor(payload *simplejson.Json, mode string) {
+//
+// 	spew.Dump(payload)
+// 	spew.Dump(mode)
+// }
 
 // func (b *Client) LightColour(bulb *Bulb, hue uint16, sat uint16, lum uint16, kelvin uint16, timing uint32) error {
-// func (l *Light) setColor(payload *simplejson.Json, mode string) {
-// 	var transition uint32
-// 	if trans, e := payload.Get("transition").Int(); e == nil {
-// 		trans /= 1000 //LIFX transition time is in seconds
-// 		transition = uint32(trans)
-// 	}
-//
-// 	switch mode {
-// 	case "hue":
-// 		fhue, _ := payload.Get("hue").Float64()
-// 		hue := uint16(fhue * math.MaxUint16)
-// 		fsaturation, _ := payload.Get("saturation").Float64()
-// 		saturation := uint16(fsaturation * math.MaxUint16)
-// 		l.Client.LightColour(l.Bulb, &hue, &saturation, nil, nil, &transition)
-//
-// 	case "xy":
-// 		//TODO: Lifx does not support XY color
-//
-// 	case "temperature":
-// 		temp, _ := payload.Get("temperature").Float64()
-// 		utemp := uint16(math.Floor(1000000 / temp))
-// 		l.Client.LightColour(l.Bulb, nil, nil, nil, &utemp, &transition)
-//
-// 	default:
-// 		log.Criticalf("Bad color mode: %s", mode)
-// 		return
-// 	}
-//
-// 	if !l.Batch {
-// 		l.colorBus.SendEvent("state", l.GetJsonLightState())
-// 	}
-//
-// }
+func (l *Light) setColor(payload *simplejson.Json, mode string) {
+	log.Infof("setcolor called, payload barfing")
+	spew.Dump(payload)
+	var transition uint32
+	if trans, e := payload.Get("transition").Int(); e == nil {
+		trans /= 1000 //LIFX transition time is in seconds
+		transition = uint32(trans)
+	}
+
+	switch mode {
+	case "hue":
+		fhue, _ := payload.Get("hue").Float64()
+		hue := uint16(fhue * math.MaxUint16)
+		fsaturation, _ := payload.Get("saturation").Float64()
+		saturation := uint16(fsaturation * math.MaxUint16)
+		l.Client.LightColour(l.Bulb, &hue, &saturation, nil, nil, &transition)
+
+	case "xy":
+		//TODO: Lifx does not support XY color
+
+	case "temperature":
+		temp, _ := payload.Get("temperature").Float64()
+		utemp := uint16(math.Floor(1000000 / temp))
+		l.Client.LightColour(l.Bulb, nil, nil, nil, &utemp, &transition)
+
+	default:
+		log.Criticalf("Bad color mode: %s", mode)
+		return
+	}
+
+	if !l.Batch {
+		l.colorBus.SendEvent("state", l.GetJsonLightState())
+	}
+
+}
 
 func (l *Light) setBatchColor(payload *simplejson.Json) {
 	l.StartBatch()
@@ -255,7 +257,6 @@ func (l *Light) setBatchColor(payload *simplejson.Json) {
 		l.turnOnOff(onoff)
 	}
 	if transition, err := payload.Get("transition").Int(); err == nil {
-		// l.setTransition(transition) #TODO
 		log.Infof("setting transition %d", transition)
 	}
 	l.EndBatch()
@@ -276,7 +277,6 @@ func isUnique(newbulb lifx.Bulb) bool {
 	ret := true
 	for _, bulb := range seenlights {
 		if bulb.LifxAddress == newbulb.LifxAddress {
-			log.Errorf("bulb is not unique")
 			ret = false
 		}
 	}
@@ -313,8 +313,6 @@ func run() int {
 					log.HandleErrorf(err, "Error creating light instance")
 				}
 				seenlights = append(seenlights, bulb)
-				// log.Infof("spewing lights")
-				// spew.Dump(seenlights)
 			}
 		}
 	}()
