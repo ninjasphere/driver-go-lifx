@@ -30,25 +30,12 @@ type Light struct {
 	Client        *lifx.Client
 }
 
-func (l *Light) GetJsonLightState() *simplejson.Json {
-	js := simplejson.New()
-	// js.Set("on", st.On)
-	// js.Set("bri", st.Brightness)
-	// js.Set("sat", st.Saturation)
-	// js.Set("hue", st.Hue)
-	// js.Set("ct", st.ColorTemp)
-	// js.Set("transitionTime", st.TransitionTime)
-	// js.Set("xy", st.XY)
-
-	return js
-}
+//---------------------------------------------------------------[Busses]----------------------------------------------------------------
 
 func getOnOffBus(light *Light) *ninja.ChannelBus {
 	methods := []string{"turnOn", "turnOff", "set"}
 	events := []string{"state"}
 	onOffBus, err := light.Bus.AnnounceChannel("on-off", "on-off", methods, events, func(method string, payload *simplejson.Json) {
-		log.Infof("got actuation, method is %s", method)
-		spew.Dump(payload)
 		if light.Batch == true {
 			return
 		}
@@ -111,11 +98,7 @@ func getColorBus(light *Light) *ninja.ChannelBus {
 		}
 		switch method {
 		case "set":
-			mode, err := payload.Get("mode").String()
-			if err != nil {
-				log.Criticalf("No mode sent to color bus: %s", err)
-			}
-			light.setColor(payload, mode)
+			light.setColor(payload)
 		default:
 			log.Criticalf("Color got an unknown method %s", method)
 		}
@@ -148,9 +131,11 @@ func getBatchBus(light *Light) *ninja.ChannelBus {
 	return batchBus
 }
 
+//---------------------------------------------------------------[Bulb]----------------------------------------------------------------
+
 func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Light, error) { //TODO cut this down!
 	id := string(bulb.LifxAddress[:6]) //Address is 6 bytes long
-	log.Infof("Making light with ID: %s Label:", id, bulb.Label)
+	log.Infof("Making light with ID: %s Label:", id, bulb.GetLabel())
 	light := &Light{
 		Batch:  false,
 		Client: client,
@@ -165,7 +150,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Ligh
       "ninja:thingType": "light"
   }`))
 
-	deviceBus, _ := bus.AnnounceDevice(id, "light", bulb.Label, sigs) //TODO fix when lib gets updated
+	deviceBus, _ := bus.AnnounceDevice(id, "light", bulb.GetLabel(), sigs)
 	light.Bus = deviceBus
 	light.OnOffBus = getOnOffBus(light)
 	light.brightnessBus = getBrightBus(light)
@@ -181,8 +166,7 @@ func (l *Light) StartBatch() {
 
 func (l *Light) EndBatch() {
 	l.Batch = false
-	// l.User.SetLightState(l.Id, l.LightState) //TODO send actual state
-	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
+	l.sendLightState()
 }
 
 func (l *Light) turnOnOff(state bool) {
@@ -196,42 +180,59 @@ func (l *Light) turnOnOff(state bool) {
 }
 
 func (l *Light) setBrightness(fbrightness float64) {
-	// bri := fbrightness * math.MaxUint16
+	bri := fbrightness * math.MaxUint16
+	l.Bulb.BulbState.Brightness = uint16(bri)
+
+	if !l.Batch {
+		l.sendLightState()
+	}
 	// l.Client.LightColour(l.Bulb, nil, nil, &bri, nil, nil)
 
 }
 
-// func (l *Light) setColor(payload *simplejson.Json, mode string) {
-//
-// 	spew.Dump(payload)
-// 	spew.Dump(mode)
-// }
+func (l *Light) setColor(payload *simplejson.Json) {
 
-// func (b *Client) LightColour(bulb *Bulb, hue uint16, sat uint16, lum uint16, kelvin uint16, timing uint32) error {
-func (l *Light) setColor(payload *simplejson.Json, mode string) {
-	log.Infof("setcolor called, payload barfing")
-	spew.Dump(payload)
-	var transition uint32
-	if trans, e := payload.Get("transition").Int(); e == nil {
-		trans /= 1000 //LIFX transition time is in seconds
-		transition = uint32(trans)
+	// colorpayload := payload.Get("color")
+	mode, err := payload.Get("mode").String()
+	if err != nil {
+		log.Warningf("No mode sent to color bus: %s", err)
+		spew.Dump(payload)
 	}
 
 	switch mode {
 	case "hue":
-		fhue, _ := payload.Get("hue").Float64()
+		fhue, err := payload.Get("hue").Float64()
+		if err != nil {
+			log.Warningf("No hue sent to color bus :%s", err)
+			spew.Dump(payload)
+			return
+		}
 		hue := uint16(fhue * math.MaxUint16)
-		fsaturation, _ := payload.Get("saturation").Float64()
+		fsaturation, err := payload.Get("saturation").Float64()
+		if err != nil {
+			log.Warningf("No saturation sent to color bus :%s", err)
+			spew.Dump(payload)
+			return
+		}
 		saturation := uint16(fsaturation * math.MaxUint16)
-		l.Client.LightColour(l.Bulb, &hue, &saturation, nil, nil, &transition)
+		l.Bulb.BulbState.Hue = hue
+		l.Bulb.BulbState.Saturation = saturation
+		l.Bulb.BulbState.Kelvin = 0
 
 	case "xy":
 		//TODO: Lifx does not support XY color
 
 	case "temperature":
-		temp, _ := payload.Get("temperature").Float64()
-		utemp := uint16(math.Floor(1000000 / temp))
-		l.Client.LightColour(l.Bulb, nil, nil, nil, &utemp, &transition)
+		temp, err := payload.Get("temperature").Float64()
+		if err != nil {
+			log.Warningf("No temperature sent to color bus :%s", err)
+			spew.Dump(payload)
+			return
+		}
+		l.Bulb.BulbState.Hue = 0
+		l.Bulb.BulbState.Saturation = 0
+		l.Bulb.BulbState.Kelvin = uint16(temp)
+		log.Infof("Setting temperature: %d", temp)
 
 	default:
 		log.Criticalf("Bad color mode: %s", mode)
@@ -239,16 +240,22 @@ func (l *Light) setColor(payload *simplejson.Json, mode string) {
 	}
 
 	if !l.Batch {
-		l.colorBus.SendEvent("state", l.GetJsonLightState())
+		l.sendLightState()
 	}
 
 }
 
+func (l *Light) setTransition(trans int) {
+	l.Bulb.BulbState.Timing = uint32(trans)
+}
+
 func (l *Light) setBatchColor(payload *simplejson.Json) {
+	log.Infof("got batch")
+	spew.Dump(payload)
 	l.StartBatch()
 	color := payload.Get("color")
 	if color != nil {
-		l.setColor(color, "hue")
+		l.setColor(color)
 	}
 	if brightness, err := payload.Get("brightness").Float64(); err == nil {
 		l.setBrightness(brightness)
@@ -257,20 +264,24 @@ func (l *Light) setBatchColor(payload *simplejson.Json) {
 		l.turnOnOff(onoff)
 	}
 	if transition, err := payload.Get("transition").Int(); err == nil {
-		log.Infof("setting transition %d", transition)
+		l.setTransition(transition)
 	}
 	l.EndBatch()
 }
 
+func (l *Light) sendLightState() {
+	s := l.Bulb.BulbState
+	log.Infof("Sending bulb state: ")
+	spew.Dump(s)
+	l.Client.LightColour(l.Bulb, s.Hue, s.Saturation, s.Brightness, s.Kelvin, s.Timing)
+	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
+}
+
+//---------------------------------------------------------------[Utils]----------------------------------------------------------------
+
 func getCurDir() string {
 	pwd, _ := os.Getwd()
 	return pwd + "/"
-}
-
-func (l *Light) sendLightState() {
-
-	// l.User.SetLightState(l.Id, l.LightState) #TODO
-	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
 }
 
 func isUnique(newbulb lifx.Bulb) bool {
@@ -282,6 +293,21 @@ func isUnique(newbulb lifx.Bulb) bool {
 	}
 	return ret
 }
+
+func (l *Light) GetJsonLightState() *simplejson.Json {
+	js := simplejson.New()
+	// js.Set("on", st.On)
+	// js.Set("bri", st.Brightness)
+	// js.Set("sat", st.Saturation)
+	// js.Set("hue", st.Hue)
+	// js.Set("ct", st.ColorTemp)
+	// js.Set("transitionTime", st.TransitionTime)
+	// js.Set("xy", st.XY)
+
+	return js
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------
 
 func run() int {
 	log.Infof("Starting " + drivername)
@@ -312,7 +338,7 @@ func run() int {
 				if err != nil {
 					log.HandleErrorf(err, "Error creating light instance")
 				}
-				seenlights = append(seenlights, bulb)
+				seenlights = append(seenlights, bulb) //TODO remove bulbs that haven't been seen in a while?
 			}
 		}
 	}()
