@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"math"
-	"time"
 
 	"os"
-	"os/signal"
 
 	"github.com/bitly/go-simplejson"
 	"github.com/davecgh/go-spew/spew"
@@ -288,7 +285,7 @@ func getCurDir() string {
 	return pwd + "/"
 }
 
-func isUnique(newbulb lifx.Bulb) bool {
+func isUnique(newbulb *lifx.Bulb) bool {
 	ret := true
 	for _, bulb := range seenlights {
 		if bulb.LifxAddress == newbulb.LifxAddress {
@@ -309,50 +306,4 @@ func (l *Light) GetJsonLightState() *simplejson.Json {
 	// js.Set("xy", st.XY)
 
 	return js
-}
-
-//---------------------------------------------------------------------------------------------------------------------------------------
-
-func run() int {
-	log.Infof("Starting " + drivername)
-
-	conn, err := ninja.Connect("com.ninjablocks.lifx")
-	if err != nil {
-		log.FatalErrorf(err, "Could not connect to MQTT Broker")
-	}
-
-	bus, err := conn.AnnounceDriver("com.ninjablocks.lifx", drivername, getCurDir())
-	if err != nil {
-		log.FatalErrorf(err, "Could not get driver bus")
-	}
-
-	client := lifx.NewClient()
-	log.Infof("Attempting to discover new lifx bulbs")
-	err = client.StartDiscovery()
-	if err != nil {
-		log.HandleErrorf(err, "Can't discover bulbs")
-	}
-
-	go func() {
-		time.Sleep(5 * time.Second)
-		for _, bulb := range client.GetBulbs() {
-			if isUnique(*bulb) {
-				log.Infof("creating new light")
-				_, err := NewLight(bus, client, bulb)
-				if err != nil {
-					log.HandleErrorf(err, "Error creating light instance")
-				}
-				seenlights = append(seenlights, bulb) //TODO remove bulbs that haven't been seen in a while?
-			}
-		}
-	}()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
-
-	// Block until a signal is received.
-	s := <-c
-	fmt.Println("Got signal:", s)
-
-	return 0
 }
