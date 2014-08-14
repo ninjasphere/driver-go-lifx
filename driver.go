@@ -24,10 +24,12 @@ type Light struct {
 	OnOffBus      *ninja.ChannelBus
 	colorBus      *ninja.ChannelBus
 	brightnessBus *ninja.ChannelBus
-	Batch         bool
 	batchBus      *ninja.ChannelBus
-	Bulb          *lifx.Bulb
 	Client        *lifx.Client
+	Batch         bool            // are we caching changes?
+	Bulb          *lifx.Bulb      // keep a reference to the lifx bulb
+	BatchState    *lifx.BulbState // used for batching together changes
+	Timing        uint32          // the timing used for the transition in the batch
 }
 
 //---------------------------------------------------------------[Busses]----------------------------------------------------------------
@@ -134,12 +136,14 @@ func getBatchBus(light *Light) *ninja.ChannelBus {
 //---------------------------------------------------------------[Bulb]----------------------------------------------------------------
 
 func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Light, error) { //TODO cut this down!
-	id := string(bulb.LifxAddress[:6]) //Address is 6 bytes long
-	log.Infof("Making light with ID: %s Label:", id, bulb.GetLabel())
+
+	log.Infof("Making light with ID: %s Label:", bulb.GetLifxAddress(), bulb.GetLabel())
+
 	light := &Light{
-		Batch:  false,
-		Client: client,
-		Bulb:   bulb,
+		Batch:      false,
+		Client:     client,
+		Bulb:       bulb,
+		BatchState: &lifx.BulbState{}, // create an empty batch state
 	}
 
 	sigs, _ := simplejson.NewJson([]byte(`{
@@ -150,7 +154,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Ligh
       "ninja:thingType": "light"
   }`))
 
-	deviceBus, _ := bus.AnnounceDevice(id, "light", bulb.GetLabel(), sigs)
+	deviceBus, _ := bus.AnnounceDevice(bulb.GetLifxAddress(), "light", bulb.GetLabel(), sigs)
 	light.Bus = deviceBus
 	light.OnOffBus = getOnOffBus(light)
 	light.brightnessBus = getBrightBus(light)
@@ -167,6 +171,7 @@ func (l *Light) StartBatch() {
 func (l *Light) EndBatch() {
 	l.Batch = false
 	l.sendLightState()
+	l.BatchState = &lifx.BulbState{} // create an empty batch state
 }
 
 func (l *Light) turnOnOff(state bool) {
@@ -176,12 +181,11 @@ func (l *Light) turnOnOff(state bool) {
 	} else {
 		l.Client.LightOff(l.Bulb)
 	}
-
 }
 
 func (l *Light) setBrightness(fbrightness float64) {
 	bri := fbrightness * math.MaxUint16
-	l.Bulb.BulbState.Brightness = uint16(bri)
+	l.BatchState.Brightness = uint16(bri)
 
 	if !l.Batch {
 		l.sendLightState()
@@ -215,9 +219,9 @@ func (l *Light) setColor(payload *simplejson.Json) {
 			return
 		}
 		saturation := uint16(fsaturation * math.MaxUint16)
-		l.Bulb.BulbState.Hue = hue
-		l.Bulb.BulbState.Saturation = saturation
-		l.Bulb.BulbState.Kelvin = 0
+		l.BatchState.Hue = hue
+		l.BatchState.Saturation = saturation
+		l.BatchState.Kelvin = 0
 
 	case "xy":
 		//TODO: Lifx does not support XY color
@@ -229,9 +233,9 @@ func (l *Light) setColor(payload *simplejson.Json) {
 			spew.Dump(payload)
 			return
 		}
-		l.Bulb.BulbState.Hue = 0
-		l.Bulb.BulbState.Saturation = 0
-		l.Bulb.BulbState.Kelvin = uint16(temp)
+		l.BatchState.Hue = 0
+		l.BatchState.Saturation = 0
+		l.BatchState.Kelvin = uint16(temp)
 		log.Infof("Setting temperature: %d", temp)
 
 	default:
@@ -246,7 +250,7 @@ func (l *Light) setColor(payload *simplejson.Json) {
 }
 
 func (l *Light) setTransition(trans int) {
-	l.Bulb.BulbState.Timing = uint32(trans)
+	l.Timing = uint32(trans)
 }
 
 func (l *Light) setBatchColor(payload *simplejson.Json) {
@@ -270,10 +274,10 @@ func (l *Light) setBatchColor(payload *simplejson.Json) {
 }
 
 func (l *Light) sendLightState() {
-	s := l.Bulb.BulbState
+	s := l.BatchState
 	log.Infof("Sending bulb state: ")
 	spew.Dump(s)
-	l.Client.LightColour(l.Bulb, s.Hue, s.Saturation, s.Brightness, s.Kelvin, s.Timing)
+	l.Client.LightColour(l.Bulb, s.Hue, s.Saturation, s.Brightness, s.Kelvin, l.Timing)
 	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
 }
 
