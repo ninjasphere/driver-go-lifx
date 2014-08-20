@@ -6,13 +6,8 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go-ninja"
-	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/wolfeidau/lifx"
 )
-
-var drivername = "driver-lifx"
-var log = logger.GetLogger(drivername)
-var seenlights []*lifx.Bulb
 
 type Light struct {
 	Bus           *ninja.DeviceBus

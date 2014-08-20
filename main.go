@@ -6,8 +6,14 @@ import (
 	"os/signal"
 
 	"github.com/ninjasphere/go-ninja"
+	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/wolfeidau/lifx"
 )
+
+const drivername = "driver-lifx"
+
+var log = logger.GetLogger(drivername)
+var seenlights []*lifx.Bulb
 
 func main() {
 	os.Exit(realMain())
@@ -25,9 +31,18 @@ func realMain() int {
 	pwd, _ := os.Getwd()
 
 	bus, err := conn.AnnounceDriver("com.ninjablocks.lifx", drivername, pwd)
+
 	if err != nil {
 		log.FatalErrorf(err, "Could not get driver bus")
 	}
+
+	statusJob, err := ninja.CreateStatusJob(conn, drivername)
+
+	if err != nil {
+		log.FatalErrorf(err, "Could not setup status job")
+	}
+
+	statusJob.Start()
 
 	client := lifx.NewClient()
 	log.Infof("Attempting to discover new lifx bulbs")
