@@ -1,0 +1,10 @@
+{
+  "name": "driver-lifx",
+  "version": "0.1.0",
+  "description": "Ninja Sphere - Philips Lifx Driver",
+  "main": "main.go",
+  "author": "Nick Clark <nick@ninjablocks.com>",
+  "license": "MIT",
+  "topics": {},
+  "maxMemory": 10
+}
