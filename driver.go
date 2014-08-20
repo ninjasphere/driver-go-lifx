@@ -3,8 +3,6 @@ package main
 import (
 	"math"
 
-	"os"
-
 	"github.com/bitly/go-simplejson"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go-ninja"
@@ -23,10 +21,19 @@ type Light struct {
 	brightnessBus *ninja.ChannelBus
 	batchBus      *ninja.ChannelBus
 	Client        *lifx.Client
-	Batch         bool            // are we caching changes?
-	Bulb          *lifx.Bulb      // keep a reference to the lifx bulb
-	BatchState    *lifx.BulbState // used for batching together changes
-	Timing        uint32          // the timing used for the transition in the batch
+	state         *lightState // state for the bulb
+	Batch         bool        // are we caching changes?
+	Bulb          *lifx.Bulb  // keep a reference to the lifx bulb
+	Timing        uint32      // the timing used for the transition in the batch
+}
+
+type lightState struct {
+	On         bool   `json:"on"`
+	Brightness uint16 `json:"bri"`
+	Hue        uint16 `json:"hue"`
+	Saturation uint16 `json:"sat"`
+	ColorTemp  uint16 `json:"ct"` // kelvins
+	Transition uint32 `json:"transitiontime"`
 }
 
 //---------------------------------------------------------------[Busses]----------------------------------------------------------------
@@ -134,13 +141,13 @@ func getBatchBus(light *Light) *ninja.ChannelBus {
 
 func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*Light, error) { //TODO cut this down!
 
-	log.Infof("Making light with ID: %s Label:", bulb.GetLifxAddress(), bulb.GetLabel())
+	log.Infof("Making light with ID: %s Label: %s", bulb.GetLifxAddress(), bulb.GetLabel())
 
 	light := &Light{
-		Batch:      false,
-		Client:     client,
-		Bulb:       bulb,
-		BatchState: &lifx.BulbState{}, // create an empty batch state
+		Batch:  false,
+		Client: client,
+		Bulb:   bulb,
+		state:  &lightState{}, // create an empty batch state
 	}
 
 	sigs, _ := simplejson.NewJson([]byte(`{
@@ -168,7 +175,7 @@ func (l *Light) StartBatch() {
 func (l *Light) EndBatch() {
 	l.Batch = false
 	l.sendLightState()
-	l.BatchState = &lifx.BulbState{} // create an empty batch state
+	l.state = &lightState{} // create an empty batch state
 }
 
 func (l *Light) turnOnOff(state bool) {
@@ -182,7 +189,7 @@ func (l *Light) turnOnOff(state bool) {
 
 func (l *Light) setBrightness(fbrightness float64) {
 	bri := fbrightness * math.MaxUint16
-	l.BatchState.Brightness = uint16(bri)
+	l.state.Brightness = uint16(bri)
 
 	if !l.Batch {
 		l.sendLightState()
@@ -216,9 +223,9 @@ func (l *Light) setColor(payload *simplejson.Json) {
 			return
 		}
 		saturation := uint16(fsaturation * math.MaxUint16)
-		l.BatchState.Hue = hue
-		l.BatchState.Saturation = saturation
-		l.BatchState.Kelvin = 0
+		l.state.Hue = hue
+		l.state.Saturation = saturation
+		l.state.Brightness = 0
 
 	case "xy":
 		//TODO: Lifx does not support XY color
@@ -230,10 +237,10 @@ func (l *Light) setColor(payload *simplejson.Json) {
 			spew.Dump(payload)
 			return
 		}
-		l.BatchState.Hue = 0
-		l.BatchState.Saturation = 0
-		l.BatchState.Kelvin = uint16(temp)
-		log.Infof("Setting temperature: %d", temp)
+		l.state.Hue = 0
+		l.state.Saturation = 0
+		l.state.ColorTemp = uint16(temp)
+		log.Infof("Setting temperature: %f", temp)
 
 	default:
 		log.Criticalf("Bad color mode: %s", mode)
@@ -271,19 +278,14 @@ func (l *Light) setBatchColor(payload *simplejson.Json) {
 }
 
 func (l *Light) sendLightState() {
-	s := l.BatchState
+	s := l.state
 	log.Infof("Sending bulb state: ")
 	spew.Dump(s)
-	l.Client.LightColour(l.Bulb, s.Hue, s.Saturation, s.Brightness, s.Kelvin, l.Timing)
-	l.OnOffBus.SendEvent("state", l.GetJsonLightState())
+	l.Client.LightColour(l.Bulb, s.Hue, s.Saturation, s.Brightness, s.ColorTemp, s.Transition)
+	l.OnOffBus.SendEvent("state", l.getJSONLightState())
 }
 
 //---------------------------------------------------------------[Utils]----------------------------------------------------------------
-
-func getCurDir() string {
-	pwd, _ := os.Getwd()
-	return pwd + "/"
-}
 
 func isUnique(newbulb *lifx.Bulb) bool {
 	ret := true
@@ -295,15 +297,8 @@ func isUnique(newbulb *lifx.Bulb) bool {
 	return ret
 }
 
-func (l *Light) GetJsonLightState() *simplejson.Json {
+func (l *Light) getJSONLightState() *simplejson.Json {
 	js := simplejson.New()
-	// js.Set("on", st.On)
-	// js.Set("bri", st.Brightness)
-	// js.Set("sat", st.Saturation)
-	// js.Set("hue", st.Hue)
-	// js.Set("ct", st.ColorTemp)
-	// js.Set("transitionTime", st.TransitionTime)
-	// js.Set("xy", st.XY)
-
+	js.SetPath([]string{}, l.state)
 	return js
 }

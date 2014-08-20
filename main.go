@@ -22,7 +22,9 @@ func realMain() int {
 		log.FatalErrorf(err, "Could not connect to MQTT Broker")
 	}
 
-	bus, err := conn.AnnounceDriver("com.ninjablocks.lifx", drivername, getCurDir())
+	pwd, _ := os.Getwd()
+
+	bus, err := conn.AnnounceDriver("com.ninjablocks.lifx", drivername, pwd)
 	if err != nil {
 		log.FatalErrorf(err, "Could not get driver bus")
 	}
