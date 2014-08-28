@@ -38,7 +38,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 
 	light.EnableOnOffChannel()
 	light.EnableBrightnessChannel()
-	light.EnableColorChannel()
+	light.EnableColorChannel("temperature", "hue")
 	light.EnableTransitionChannel()
 
 	light.ApplyOnOff = func(state bool) error {
