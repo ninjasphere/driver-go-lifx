@@ -60,14 +60,14 @@ func realMain() int {
 			event := <-sub.Events
 
 			switch bulb := event.(type) {
-			case lifx.Bulb:
-				if isUnique(&bulb) {
+			case *lifx.Bulb:
+				if isUnique(bulb) {
 					log.Infof("creating new light")
-					_, err := NewLight(bus, client, &bulb)
+					_, err := NewLight(bus, client, bulb)
 					if err != nil {
 						log.HandleErrorf(err, "Error creating light instance")
 					}
-					seenlights = append(seenlights, &bulb) //TODO remove bulbs that haven't been seen in a while?
+					seenlights = append(seenlights, bulb) //TODO remove bulbs that haven't been seen in a while?
 				}
 			default:
 				log.Infof("Event %v", event)
