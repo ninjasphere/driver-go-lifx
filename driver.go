@@ -112,12 +112,14 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 		return nil
 	}
 
-	// TODO: This actually needs to be called when the bulb state changes
-	onStateChanged := func() {
+	bulb.SetStateHandler(buildStateHandler(bulb, light))
 
-		bulbState := bulb.GetState()
+	return light, nil
+}
 
-		log.Infof("Bulb state changed")
+func buildStateHandler(bulb *lifx.Bulb, light *devices.LightDevice) lifx.StateHandler {
+
+	return func(bulbState *lifx.BulbState) {
 
 		spew.Dump(bulbState)
 
@@ -150,19 +152,6 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 
 		light.SetLightState(state)
 	}
-
-	onStateChanged()
-
-	/*sub := client.Subscribe()
-
-	go func() {
-		for {
-			event := <-sub.Events
-			spew.Dump("Got event", event)
-		}
-	}()*/
-
-	return light, nil
 }
 
 //---------------------------------------------------------------[Utils]----------------------------------------------------------------
