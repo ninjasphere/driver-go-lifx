@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go-ninja"
 	"github.com/ninjasphere/go-ninja/channels"
 	"github.com/ninjasphere/go-ninja/devices"
@@ -121,7 +120,8 @@ func buildStateHandler(bulb *lifx.Bulb, light *devices.LightDevice) lifx.StateHa
 
 	return func(bulbState *lifx.BulbState) {
 
-		spew.Dump(bulbState)
+		jsonState, _ := json.Marshal(bulbState)
+		log.Debugf("Incoming state: %s", jsonState)
 
 		state := &devices.LightDeviceState{}
 
