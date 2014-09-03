@@ -35,10 +35,18 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 		log.FatalError(err, "Failed to create light device")
 	}
 
-	light.EnableOnOffChannel()
-	light.EnableBrightnessChannel()
-	light.EnableColorChannel("temperature", "hue")
-	light.EnableTransitionChannel()
+	if err := light.EnableOnOffChannel(); err != nil {
+		log.FatalError(err, "Could not enable lifx on-off channel")
+	}
+	if err := light.EnableBrightnessChannel(); err != nil {
+		log.FatalError(err, "Could not enable lifx brightness channel")
+	}
+	if err := light.EnableColorChannel("temperature", "hue"); err != nil {
+		log.FatalError(err, "Could not enable lifx color channel")
+	}
+	if err := light.EnableTransitionChannel(); err != nil {
+		log.FatalError(err, "Could not enable lifx transition channel")
+	}
 
 	light.ApplyOnOff = func(state bool) error {
 		var err error
