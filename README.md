@@ -8,4 +8,4 @@ Run `./bin/driver-go-lifx` from the `bin` directory after building
 
 ##Todo
 * Implement SetColor, SetBrightness, and SetTransition functions
-* Send only the relevant states in the sendEvent function
+* Send only the relevant states in the sendEvent function 
