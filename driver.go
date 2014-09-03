@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go-ninja"
 	"github.com/ninjasphere/go-ninja/channels"
 	"github.com/ninjasphere/go-ninja/devices"
@@ -36,10 +35,18 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 		log.FatalError(err, "Failed to create light device")
 	}
 
-	light.EnableOnOffChannel()
-	light.EnableBrightnessChannel()
-	light.EnableColorChannel("temperature", "hue")
-	light.EnableTransitionChannel()
+	if err := light.EnableOnOffChannel(); err != nil {
+		log.FatalError(err, "Could not enable lifx on-off channel")
+	}
+	if err := light.EnableBrightnessChannel(); err != nil {
+		log.FatalError(err, "Could not enable lifx brightness channel")
+	}
+	if err := light.EnableColorChannel("temperature", "hue"); err != nil {
+		log.FatalError(err, "Could not enable lifx color channel")
+	}
+	if err := light.EnableTransitionChannel(); err != nil {
+		log.FatalError(err, "Could not enable lifx transition channel")
+	}
 
 	light.ApplyOnOff = func(state bool) error {
 		var err error
@@ -121,7 +128,8 @@ func buildStateHandler(bulb *lifx.Bulb, light *devices.LightDevice) lifx.StateHa
 
 	return func(bulbState *lifx.BulbState) {
 
-		spew.Dump(bulbState)
+		jsonState, _ := json.Marshal(bulbState)
+		log.Debugf("Incoming state: %s", jsonState)
 
 		state := &devices.LightDeviceState{}
 
