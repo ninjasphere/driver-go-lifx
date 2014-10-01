@@ -1,10 +1,10 @@
 {
-  "name": "driver-lifx",
+  "id": "com.ninjablocks.lifx",
+  "name": "Lifx Driver",
   "version": "0.1.0",
-  "description": "Ninja Sphere - Philips Lifx Driver",
+  "description": "Discovers Lifx bulbs on the network, and exposes them as Lights with on-off, color, transition, brightness and batch channels",
   "main": "driver-go-lifx",
   "author": "Nick Clark <nick@ninjablocks.com>",
   "license": "MIT",
-  "topics": {},
   "maxMemory": 10
 }
