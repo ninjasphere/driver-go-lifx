@@ -5,55 +5,126 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/bitly/go-simplejson"
-	"github.com/ninjasphere/go-ninja"
+	"github.com/ninjasphere/go-ninja/api"
 	"github.com/ninjasphere/go-ninja/channels"
 	"github.com/ninjasphere/go-ninja/devices"
+	"github.com/ninjasphere/go-ninja/logger"
+	"github.com/ninjasphere/go-ninja/model"
 	"github.com/wolfeidau/lifx"
 )
 
+var info = ninja.LoadModuleInfo("./package.json")
+
+type LifxDriver struct {
+	log       *logger.Logger
+	config    *LifxDriverConfig
+	conn      *ninja.Connection
+	client    *lifx.Client
+	sendEvent func(event string, payload interface{}) error
+}
+
+func NewLifxDriver() {
+	d := &LifxDriver{
+		log:    logger.GetLogger(info.Name),
+		client: lifx.NewClient(),
+	}
+
+	conn, err := ninja.Connect(info.ID)
+	if err != nil {
+		d.log.Fatalf("Failed to connect to MQTT: %s", err)
+	}
+
+	err = conn.ExportDriver(d)
+
+	if err != nil {
+		d.log.Fatalf("Failed to export driver: %s", err)
+	}
+
+	go func() {
+
+		sub := d.client.Subscribe()
+
+		for {
+
+			event := <-sub.Events
+
+			switch bulb := event.(type) {
+			case *lifx.Bulb:
+				if isUnique(bulb) {
+					d.log.Infof("creating new light")
+					_, err := d.newLight(bulb)
+					if err != nil {
+						d.log.HandleErrorf(err, "Error creating light instance")
+					}
+					seenlights = append(seenlights, bulb) //TODO remove bulbs that haven't been seen in a while?
+				}
+			default:
+				d.log.Infof("Event %v", event)
+			}
+
+		}
+
+	}()
+
+	d.conn = conn
+}
+
+type LifxDriverConfig struct {
+}
+
+func (d *LifxDriver) Start(config *LifxDriverConfig) error {
+	d.log.Infof("Starting with config %v", config)
+	d.config = config
+
+	err := d.client.StartDiscovery()
+	if err != nil {
+		err = fmt.Errorf("Failed to discover bulbs : %s", err)
+	}
+	return err
+}
+
+func (d *LifxDriver) Stop() error {
+	return nil
+}
+
+func (d *LifxDriver) GetModuleInfo() *model.Module {
+	return info
+}
+
+func (d *LifxDriver) SetEventHandler(sendEvent func(event string, payload interface{}) error) {
+	d.sendEvent = sendEvent
+}
+
 //---------------------------------------------------------------[Bulb]----------------------------------------------------------------
 
-func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devices.LightDevice, error) { //TODO cut this down!
+func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { //TODO cut this down!
 
-	log.Infof("Making light with ID: %s Label: %s", bulb.GetLifxAddress(), bulb.GetLabel())
+	name := bulb.GetLabel()
 
-	sigs, _ := simplejson.NewJson([]byte(`{
+	d.log.Infof("Making light with ID: %s Label: %s", bulb.GetLifxAddress(), name)
+
+	light, err := devices.CreateLightDevice(d, &model.Device{
+		NaturalID:     bulb.GetLifxAddress(),
+		NaturalIDType: "lifx",
+		Name:          &name,
+		Signatures: &map[string]string{
 			"ninja:manufacturer": "Lifx",
-			"ninja:productName": "Lifx Bulb",
-			"ninja:productType": "Light",
-			"ninja:thingType": "light"
-	}`))
+			"ninja:productName":  "Lifx Bulb",
+			"ninja:productType":  "Light",
+			"ninja:thingType":    "light",
+		},
+	}, d.conn)
 
-	deviceBus, err := bus.AnnounceDevice(bulb.GetLifxAddress(), "light", bulb.GetLabel(), sigs)
 	if err != nil {
-		log.FatalError(err, "Failed to create light device bus")
-	}
-
-	light, err := devices.CreateLightDevice(bulb.GetLabel(), deviceBus)
-	if err != nil {
-		log.FatalError(err, "Failed to create light device")
-	}
-
-	if err := light.EnableOnOffChannel(); err != nil {
-		log.FatalError(err, "Could not enable lifx on-off channel")
-	}
-	if err := light.EnableBrightnessChannel(); err != nil {
-		log.FatalError(err, "Could not enable lifx brightness channel")
-	}
-	if err := light.EnableColorChannel("temperature", "hue"); err != nil {
-		log.FatalError(err, "Could not enable lifx color channel")
-	}
-	if err := light.EnableTransitionChannel(); err != nil {
-		log.FatalError(err, "Could not enable lifx transition channel")
+		d.log.FatalError(err, "Could not create light device")
 	}
 
 	light.ApplyOnOff = func(state bool) error {
 		var err error
 		if state {
-			err = client.LightOn(bulb)
+			err = d.client.LightOn(bulb)
 		} else {
-			err = client.LightOff(bulb)
+			err = d.client.LightOff(bulb)
 		}
 		if err != nil {
 			return fmt.Errorf("Failed to set on-off state: %s", err)
@@ -63,7 +134,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 
 	light.ApplyLightState = func(state *devices.LightDeviceState) error {
 		jsonState, _ := json.Marshal(state)
-		log.Debugf("Sending light state to lifx bulb: %s", jsonState)
+		d.log.Debugf("Sending light state to lifx bulb: %s", jsonState)
 
 		if state.OnOff != nil {
 			err := light.ApplyOnOff(*state.OnOff)
@@ -87,7 +158,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 
 			switch state.Color.Mode {
 			case "hue":
-				return client.LightColour(
+				return d.client.LightColour(
 					bulb,
 					uint16(*state.Color.Hue*math.MaxUint16),
 					uint16(*state.Color.Saturation*math.MaxUint16),
@@ -101,7 +172,7 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 				return fmt.Errorf("XY color mode is not yet supported in the Lifx driver")
 
 			case "temperature":
-				client.LightColour(
+				d.client.LightColour(
 					bulb,
 					0,
 					0,
@@ -119,17 +190,30 @@ func NewLight(bus *ninja.DriverBus, client *lifx.Client, bulb *lifx.Bulb) (*devi
 		return nil
 	}
 
-	bulb.SetStateHandler(buildStateHandler(bulb, light))
+	bulb.SetStateHandler(buildStateHandler(d, bulb, light))
+
+	if err := light.EnableOnOffChannel(); err != nil {
+		d.log.FatalError(err, "Could not enable lifx on-off channel")
+	}
+	if err := light.EnableBrightnessChannel(); err != nil {
+		d.log.FatalError(err, "Could not enable lifx brightness channel")
+	}
+	if err := light.EnableColorChannel("temperature", "hue"); err != nil {
+		d.log.FatalError(err, "Could not enable lifx color channel")
+	}
+	if err := light.EnableTransitionChannel(); err != nil {
+		d.log.FatalError(err, "Could not enable lifx transition channel")
+	}
 
 	return light, nil
 }
 
-func buildStateHandler(bulb *lifx.Bulb, light *devices.LightDevice) lifx.StateHandler {
+func buildStateHandler(driver *LifxDriver, bulb *lifx.Bulb, light *devices.LightDevice) lifx.StateHandler {
 
 	return func(bulbState *lifx.BulbState) {
 
 		jsonState, _ := json.Marshal(bulbState)
-		log.Debugf("Incoming state: %s", jsonState)
+		driver.log.Debugf("Incoming state: %s", jsonState)
 
 		state := &devices.LightDeviceState{}
 
@@ -163,6 +247,8 @@ func buildStateHandler(bulb *lifx.Bulb, light *devices.LightDevice) lifx.StateHa
 }
 
 //---------------------------------------------------------------[Utils]----------------------------------------------------------------
+
+var seenlights []*lifx.Bulb
 
 func isUnique(newbulb *lifx.Bulb) bool {
 	ret := true
