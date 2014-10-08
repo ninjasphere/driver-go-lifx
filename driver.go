@@ -59,6 +59,11 @@ func NewLifxDriver() {
 						d.log.HandleErrorf(err, "Error creating light instance")
 					}
 					seenlights = append(seenlights, bulb) //TODO remove bulbs that haven't been seen in a while?
+					err = d.client.GetBulbState(bulb)
+
+					if err != nil {
+						d.log.Warningf("unable to intiate bulb state request %s", err)
+					}
 				}
 			default:
 				d.log.Infof("Event %v", event)
