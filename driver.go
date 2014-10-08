@@ -15,6 +15,8 @@ import (
 
 var info = ninja.LoadModuleInfo("./package.json")
 
+var defaultTransition = 300
+
 type LifxDriver struct {
 	log       *logger.Logger
 	config    *LifxDriverConfig
@@ -153,7 +155,7 @@ func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { /
 			}
 
 			if state.Transition == nil {
-				return fmt.Errorf("Transition value missing from batch set")
+				state.Transition = &defaultTransition
 			}
 
 			switch state.Color.Mode {
