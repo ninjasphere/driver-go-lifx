@@ -234,7 +234,7 @@ func buildStateHandler(driver *LifxDriver, bulb *lifx.Bulb, light *devices.Light
 		if bulbState.Saturation == 0 {
 			color.Mode = "temperature"
 
-			temperature := int(bulbState.Kelvin)
+			temperature := float64(bulbState.Kelvin)
 			color.Temperature = &temperature
 
 		} else {
