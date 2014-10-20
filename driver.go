@@ -15,7 +15,12 @@ import (
 
 var info = ninja.LoadModuleInfo("./package.json")
 
+// Default values if we are only setting partial state.
+// TODO: @wolfidau This should be coming from the bulb
 var defaultTransition = 300
+var defaultBrightness float64 = 1
+var defaultSaturation float64 = 1
+var defaultHue = 0
 
 type LifxDriver struct {
 	log       *logger.Logger
@@ -151,17 +156,29 @@ func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { /
 		}
 
 		if state.Color != nil || state.Brightness != nil || state.Transition != nil {
-			if state.Color == nil {
-				return fmt.Errorf("Color value missing from batch set")
-			}
 
 			if state.Brightness == nil {
-				return fmt.Errorf("Brightness value missing from batch set")
+				state.Brightness = &defaultBrightness
+			}
+
+			if state.Color == nil {
+				state.Color = &channels.ColorState{
+					Mode:       "hue",
+					Saturation: &defaultSaturation,
+				}
 			}
 
 			if state.Transition == nil {
 				state.Transition = &defaultTransition
 			}
+
+			/*if state.Color == nil {
+				return fmt.Errorf("Color value missing from batch set")
+			}
+
+			if state.Brightness == nil {
+				return fmt.Errorf("Brightness value missing from batch set")
+			}*/
 
 			switch state.Color.Mode {
 			case "hue":
