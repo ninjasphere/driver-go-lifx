@@ -1,2 +1,2 @@
-/opt/ninjablocks/bin/nservice -q driver-go-lifx stop
-/opt/ninjablocks/bin/nservice -q driver-go-lifx start
+/opt/ninjablocks/bin/nservice -q driver-go-lifx stop || true
+/opt/ninjablocks/bin/nservice -q driver-go-lifx start || true

@@ -10,6 +10,7 @@ import (
 	"github.com/ninjasphere/go-ninja/devices"
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go-ninja/model"
+	// "github.com/ninjasphere/go-ninja/support"
 	"github.com/wolfeidau/lifx"
 )
 
