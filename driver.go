@@ -247,7 +247,7 @@ func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { /
 	}
 
 	// extra channels for sensors
-	illuminance := channels.NewIlluminanceChannel(d)
+	illuminance := channels.NewIlluminanceChannel()
 
 	if err := d.conn.ExportChannel(light, illuminance, "illuminance"); err != nil {
 		d.log.FatalError(err, "Could not enable lifx illuminance channel")
