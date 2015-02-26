@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/ninjasphere/go-ninja/api"
 	"github.com/ninjasphere/go-ninja/channels"
 	"github.com/ninjasphere/go-ninja/devices"
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go-ninja/model"
-	// "github.com/ninjasphere/go-ninja/support"
 	"github.com/wolfeidau/lifx"
 )
 
@@ -29,12 +29,20 @@ type LifxDriver struct {
 	conn      *ninja.Connection
 	client    *lifx.Client
 	sendEvent func(event string, payload interface{}) error
+
+	devices map[string]*lifxDevice
+}
+
+// this struct holds channels which are specific to the lifx bulb
+type lifxDevice struct {
+	illuminance *channels.IlluminanceChannel
 }
 
 func NewLifxDriver() {
 	d := &LifxDriver{
-		log:    logger.GetLogger(info.Name),
-		client: lifx.NewClient(),
+		log:     logger.GetLogger(info.Name),
+		client:  lifx.NewClient(),
+		devices: make(map[string]*lifxDevice),
 	}
 
 	conn, err := ninja.Connect(info.ID)
@@ -56,21 +64,27 @@ func NewLifxDriver() {
 
 			event := <-sub.Events
 
-			switch bulb := event.(type) {
+			switch evnt := event.(type) {
 			case *lifx.Bulb:
-				if isUnique(bulb) {
+				if isUnique(evnt) {
 					d.log.Infof("creating new light")
-					_, err := d.newLight(bulb)
+					_, err := d.newLight(evnt)
 					if err != nil {
 						d.log.HandleErrorf(err, "Error creating light instance")
 					}
-					seenlights = append(seenlights, bulb) //TODO remove bulbs that haven't been seen in a while?
-					err = d.client.GetBulbState(bulb)
+					seenlights = append(seenlights, evnt) //TODO remove bulbs that haven't been seen in a while?
+					err = d.client.GetBulbState(evnt)
 
 					if err != nil {
 						d.log.Warningf("unable to intiate bulb state request %s", err)
 					}
 				}
+			case *lifx.LightSensorState:
+				// handle these vents for each bulb
+				if d.devices[evnt.GetLifxAddress()] != nil {
+					d.devices[evnt.GetLifxAddress()].illuminance.SendState(float64(evnt.Lux))
+				}
+
 			default:
 				d.log.Infof("Event %v", event)
 			}
@@ -78,6 +92,8 @@ func NewLifxDriver() {
 		}
 
 	}()
+
+	go d.publishSensorData()
 
 	d.conn = conn
 }
@@ -230,6 +246,17 @@ func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { /
 		d.log.FatalError(err, "Could not enable lifx transition channel")
 	}
 
+	// extra channels for sensors
+	illuminance := channels.NewIlluminanceChannel(d)
+
+	if err := d.conn.ExportChannel(light, illuminance, "illuminance"); err != nil {
+		d.log.FatalError(err, "Could not enable lifx illuminance channel")
+	}
+
+	d.log.Debugf("register illuminance channel for %s", bulb.GetLifxAddress())
+
+	d.devices[bulb.GetLifxAddress()] = &lifxDevice{illuminance}
+
 	return light, nil
 }
 
@@ -268,6 +295,20 @@ func buildStateHandler(driver *LifxDriver, bulb *lifx.Bulb, light *devices.Light
 		state.Color = color
 
 		light.SetLightState(state)
+
+		// TODO use the state.Visible to indicate whether a globe is online/offline at the moment
+
+	}
+}
+
+// this function publishes information from the sensors on the lifx bulb
+// atm this is limited to illuminance
+func (d *LifxDriver) publishSensorData() {
+	c := time.Tick(30 * time.Second)
+	for _ = range c {
+		for _, bulb := range d.client.GetBulbs() {
+			d.client.GetAmbientLight(bulb)
+		}
 	}
 }
 
