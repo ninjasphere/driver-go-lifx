@@ -20,8 +20,6 @@ var info = ninja.LoadModuleInfo("./package.json")
 // TODO: @wolfidau This should be coming from the bulb
 var defaultTransition = 300
 var defaultBrightness float64 = 1
-var defaultSaturation float64 = 1
-var defaultHue = 0
 
 type LifxDriver struct {
 	log       *logger.Logger
@@ -163,7 +161,7 @@ func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { /
 
 	light.ApplyLightState = func(state *devices.LightDeviceState) error {
 		jsonState, _ := json.Marshal(state)
-		d.log.Debugf("Sending light state to lifx bulb: %s", jsonState)
+		d.log.Infof("Sending light state to lifx bulb: %s", jsonState)
 
 		if state.OnOff != nil {
 			err := light.ApplyOnOff(*state.OnOff)
@@ -173,16 +171,19 @@ func (d *LifxDriver) newLight(bulb *lifx.Bulb) (*devices.LightDevice, error) { /
 		}
 
 		if state.Color != nil || state.Brightness != nil || state.Transition != nil {
+			// pull out the origin state
+			bulbState := bulb.GetState()
 
 			if state.Brightness == nil {
-				state.Brightness = &defaultBrightness
+				brightness := float64(bulbState.Brightness) / math.MaxUint16
+				state.Brightness = &brightness
 			}
 
 			if state.Color == nil {
-				state.Color = &channels.ColorState{
-					Mode:       "hue",
-					Saturation: &defaultSaturation,
-				}
+				// save the brightness
+				brightness := state.Brightness
+				state = convertState(&bulbState)
+				state.Brightness = brightness
 			}
 
 			if state.Transition == nil {
@@ -267,38 +268,43 @@ func buildStateHandler(driver *LifxDriver, bulb *lifx.Bulb, light *devices.Light
 		jsonState, _ := json.Marshal(bulbState)
 		driver.log.Debugf("Incoming state: %s", jsonState)
 
-		state := &devices.LightDeviceState{}
-
-		onOff := int(bulbState.Power) > 0
-		state.OnOff = &onOff
-
-		brightness := float64(bulbState.Brightness) / math.MaxUint16
-		state.Brightness = &brightness
-
-		color := &channels.ColorState{}
-		if bulbState.Saturation == 0 {
-			color.Mode = "temperature"
-
-			temperature := float64(bulbState.Kelvin)
-			color.Temperature = &temperature
-
-		} else {
-			color.Mode = "hue"
-
-			hue := float64(bulbState.Hue) / float64(math.MaxUint16)
-			color.Hue = &hue
-
-			saturation := float64(bulbState.Saturation) / float64(math.MaxUint16)
-			color.Saturation = &saturation
-		}
-
-		state.Color = color
-
+		state := convertState(bulbState)
 		light.SetLightState(state)
-
-		// TODO use the state.Visible to indicate whether a globe is online/offline at the moment
-
 	}
+}
+
+func convertState(bulbState *lifx.BulbState) *devices.LightDeviceState {
+
+	state := &devices.LightDeviceState{}
+
+	onOff := int(bulbState.Power) > 0
+	state.OnOff = &onOff
+
+	brightness := float64(bulbState.Brightness) / math.MaxUint16
+	state.Brightness = &brightness
+
+	color := &channels.ColorState{}
+	if bulbState.Saturation == 0 {
+		color.Mode = "temperature"
+
+		temperature := float64(bulbState.Kelvin)
+		color.Temperature = &temperature
+
+	} else {
+		color.Mode = "hue"
+
+		hue := float64(bulbState.Hue) / float64(math.MaxUint16)
+		color.Hue = &hue
+
+		saturation := float64(bulbState.Saturation) / float64(math.MaxUint16)
+		color.Saturation = &saturation
+	}
+
+	state.Color = color
+
+	// TODO use the state.Visible to indicate whether a globe is online/offline at the moment
+
+	return state
 }
 
 // this function publishes information from the sensors on the lifx bulb
