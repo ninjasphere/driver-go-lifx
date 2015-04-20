@@ -8,3 +8,7 @@ or to develop on mac and run on the sphere
 
 ##Running
 Run `./bin/driver-go-lifx` from the `bin` directory after building 
+
+# Licensing
+
+driver-go-lifx is licensed under the MIT License. See LICENSE for the full license text.
